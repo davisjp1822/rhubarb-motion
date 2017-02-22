@@ -26,13 +26,16 @@
 #include <sched.h>
 #include <sys/mman.h>
 
+extern int8_t MOVE_DIRECTION;
 extern int16_t STARTING_SPEED;
 extern int16_t STEPS_PER_REV;
-extern int8_t WIRINGPI_OUTPUT;
 extern int16_t ACC;
 extern int16_t DEC;
 extern int32_t VELOCITY;
 extern int32_t NUM_STEPS;
+
+extern int8_t WIRINGPI_PULSE_OUTPUT;
+extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 
 extern struct timespec t;
 struct sched_param param;
@@ -55,6 +58,9 @@ int main(int argc, char *argv[])
 
 	/* if we pass the checks, setup a PREEMPT environment */
 	rt_setup();
+
+	/* rt setup complete, now pass control to the stepper function */
+	execute_move(t, MOVE_DIRECTION, STARTING_SPEED, ACC, DEC, VELOCITY, NUM_STEPS);
 
 	return 0;
 }
@@ -88,7 +94,8 @@ void parse_args(int argc, char **argv)
 	
 	int16_t STARTING_SPEED = -1;
 	int16_t STEPS_PER_REV = 2000;
-	int8_t WIRINGPI_OUTPUT = 29;
+	int8_t WIRINGPI_PULSE_OUTPUT = 29;
+	int8_t WIRINGPI_DIRECTION_OUTPUT = 26;
 	int16_t ACC = -1;
 	int16_t DEC = -1;
 	int32_t VELOCITY = -1;
@@ -100,7 +107,7 @@ void parse_args(int argc, char **argv)
 		show_usage();
 	}
 
-	while ((opt = getopt(argc, argv, "hs:r:g:a:d:v:n:")) != -1)
+	while ((opt = getopt(argc, argv, "hs:r:g:a:d:v:n:z:")) != -1)
 	{
 		
 		switch (opt) {
@@ -126,15 +133,30 @@ void parse_args(int argc, char **argv)
 				break;
 
 			case 'g':
-				WIRINGPI_OUTPUT = atoi(optarg);
-			break;			
+				WIRINGPI_PULSE_OUTPUT = atoi(optarg);
+
+				if(WIRINGPI_PULSE_OUTPUT != 28 && WIRINGPI_PULSE_OUTPUT != 29)
+				{
+					printf("\nERROR: The Rhubarb can only output pulse train signals on WiringPi outputs 28 and 29\n");
+					exit(-1);
+				}
+				break;			
+			
+			case 'z':
+				WIRINGPI_DIRECTION_OUTPUT = atoi(optarg);
+				
+				if(WIRINGPI_DIRECTION_OUTPUT != 26 && WIRINGPI_DIRECTION_OUTPUT != 27 && WIRINGPI_DIRECTION_OUTPUT != 28 && WIRINGPI_DIRECTION_OUTPUT != 29)
+				{
+					printf("\nERROR: You must specify a valid output for the Rhubarb using WiringPi outputs 26, 27, 28, or 29.\n");
+				}
+				break;
 
 			case 'a':
 				ACC = atoi(optarg);
 
 				if(ACC <= 0 || ACC > 1000)
 				{
-					printf("Acceleration cannot be less than or equal to 0 or greater than 1000\n");
+					printf("\nERROR: Acceleration cannot be less than or equal to 0 or greater than 1000\n");
 					exit(-1);
 				}
 				break;
@@ -144,7 +166,7 @@ void parse_args(int argc, char **argv)
 
 				if(DEC <= 0 || DEC > 1000)
 				{
-					printf("Deceleration cannot be less than or equal to 0 or greater than 1000\n");
+					printf("\nERROR: Deceleration cannot be less than or equal to 0 or greater than 1000\n");
 					exit(-1);
 				}
 				break;
@@ -249,6 +271,7 @@ void show_usage()
 	printf("Rhubarb Motion - a Pulse Train Motion Controller\n");
 	printf("Developed for the Rhubarb Industrial Interface Board for the Raspberry Pi\n");
 	printf("Copyright 2017 3ML LLC\n");
+	printf("John Davis\n");
 	printf("\n");
 	printf("\n");
 	printf("Using a given acceleration, deceleration, starting speed, and velocity, this program will construct and execute a trapezoidal move profile over the given distance.\n");
@@ -256,12 +279,18 @@ void show_usage()
 	printf("\n");
 	printf("Usage:\n");
 	printf("-h: display this message\n");
+	printf("-g: wiringpi pulse train output number (default 29)\n");
+	printf("-z: wiringpi step direction output number (default 26)\n");
 	printf("-s: starting speed in steps/s (1-500)\n");
 	printf("-r: drive steps per revolution (default 2000)\n");
-	printf("-g: wiringpi output number (default 29)\n");
 	printf("-a: acceleration in steps/s^2 (1-1000)\n");
 	printf("-d: deceleration in steps/s^2 (1-1000)\n");
 	printf("-v: velocity in revolutions per second (rps) (not to exceed 20kHz pulse frequency)\n");
 	printf("-n: move distance in steps\n");
+	printf("\n");
+	printf("\n");
+	printf("Example: ./rhubarb_motion -s 100 -a 250 -d 250 -v 10 -n 10000\n");
+	printf("This would move the stepper - with a starting speed of 100 steps/s, an acceleration of 250 steps/s/s, a deceleration of 250 steps/s/s, a velocity of 10 RPS (600RPM) - 10,000 steps\n");
+	printf("In this example, we assume the drive is set to 2000 steps/rev, so the stepper would move 5 revolutions (10,000/2,000). If the lead on your actuator is 1\" per revolution, your actuator would love 5\"\n);
 	exit(0);
 }
