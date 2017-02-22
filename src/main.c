@@ -8,25 +8,40 @@
 *
 */
 
+#define _GNU_SOURCE
+#define MAX_SAFE_STACK (8*1024)
+
+#include "globals.h"
+
 #include <sys/stat.h>
 #include <getopt.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <sys/utsname.h>
-#include <wiringPi.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <time.h>
+#include <sched.h>
+#include <sys/mman.h>
 
-extern int8_t STARTING_SPEED;
-extern int8_t STEPS_PER_REV;
+extern int16_t STARTING_SPEED;
+extern int16_t STEPS_PER_REV;
 extern int8_t WIRINGPI_OUTPUT;
-extern int8_t ACC;
-extern int8_t DEC;
-extern int8_t VELOCITY;
-extern int8_t NUM_STEPS;
+extern int16_t ACC;
+extern int16_t DEC;
+extern int32_t VELOCITY;
+extern int32_t NUM_STEPS;
+
+extern struct timespec t;
+struct sched_param param;
 
 extern void	show_usage();
 extern void	check_rt();
 extern void	check_root();
 extern void	parse_args();
+extern void rt_setup();
 
 int main(int argc, char *argv[])
 {
@@ -39,22 +54,45 @@ int main(int argc, char *argv[])
 	parse_args(argc, argv);
 
 	/* if we pass the checks, setup a PREEMPT environment */
-
+	rt_setup();
 
 	return 0;
+}
+
+void rt_setup()
+{
+	/* declare ourselves as a realtime task and set the scheduler */
+	param.sched_priority = 49;
+	if(sched_setscheduler(0, SCHED_FIFO, &param) == -1)
+	{
+		perror("Could not set scheduler");
+		exit(-1);
+	}
+
+	/* lock memory to prevent page faults - mlockall forces the executing program to lock all memory to RAM, not swap, which is slow */
+	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1)
+	{
+		perror("mlockall failed");
+		exit(-1);
+	}
+	
+	/* prefault the stack. set aside memory so that there are no interrupts when the system loads the memory pages into cache */
+	unsigned char dummy[MAX_SAFE_STACK];
+	memset(dummy, 0, MAX_SAFE_STACK);
+
 }
 
 void parse_args(int argc, char **argv)
 {	
 	int opt = 0;
 	
-	int8_t STARTING_SPEED = -1;
-	int8_t STEPS_PER_REV = 2000;
+	int16_t STARTING_SPEED = -1;
+	int16_t STEPS_PER_REV = 2000;
 	int8_t WIRINGPI_OUTPUT = 29;
-	int8_t ACC = -1;
-	int8_t DEC = -1;
-	int8_t VELOCITY = -1;
-	int8_t NUM_STEPS = -1;
+	int16_t ACC = -1;
+	int16_t DEC = -1;
+	int32_t VELOCITY = -1;
+	int32_t NUM_STEPS = -1;
 
 	/* by default, if no options are given, just show the usage */
 	if(argc == 1)
@@ -112,9 +150,32 @@ void parse_args(int argc, char **argv)
 				break;
 
 			case 'v':
-				/* calculate velocity, turn it into a frequency, and test to see if it is above 20kHz */
+			{
+				VELOCITY = atoi(optarg);
 
+				/*velocity cannot be negative or zero*/
+				if(VELOCITY <=0)
+				{
+					printf("\nERROR: Velocity cannot be less than or equal to 0\n\n");
+					exit(-1);
+				}
+
+				/* calculate velocity, turn it into a frequency, and test to see if it is above 20kHz */
+				int32_t freq = 1/((double)1/(VELOCITY*STEPS_PER_REV));
+
+				if(freq > MAX_FREQ)
+				{
+					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dkHz. This limit is derived by the following formula:\n\n1/(1/(velocity * steps_per_rev)).\n", MAX_FREQ);
+					printf("Where velocity is set with option -v (revolutions per second) and steps_per_rev is set via -r (steps per revolution). The latter is usually set in the stepper drive itself.\n\n");
+					exit(0);
+				}
+
+				else
+				{
+					fprintf(stderr, "\nOutput freq is: %d\n", freq);
+				}
 				break;
+			}
 
 			case 'n':
 				NUM_STEPS = atoi(optarg);
@@ -149,7 +210,7 @@ void check_root()
 {
 	if(geteuid() != 0)
 	{
-		fprintf(stderr, "You must be root (try using sudo) to run this program!\n");
+		printf("\n\n***You must be root (try using sudo) to run this program!***\n");
 		show_usage();
 		exit(-1);
 	}
@@ -159,8 +220,9 @@ void check_rt()
 {
 
 	struct utsname u;
-    int crit1, crit2 = 0;
+    int crit2 = 0;
     FILE *fd;
+	char *crit1;
 
     uname(&u);
     crit1 = strcasestr(u.version, "PREEMPT RT");
@@ -172,9 +234,9 @@ void check_rt()
         fclose(fd);
     }
 
-    if(!crit1 && !crit2)
+    if(crit1 == NULL && !crit2)
     {
-    	fprintf(stderr, "This is NOT a PREEMPT kernel - please install RTLinux\n");
+		printf("\n\n***This is NOT a PREEMPT kernel - please install RTLinux***\n");
     	show_usage();
     	exit(-1);
     }
@@ -183,23 +245,23 @@ void check_rt()
 void show_usage()
 {
 
-	printf(stderr, "\n");
-	printf(stderr, "Rhubarb Motion - a Pulse Train Motion Controller\n");
-	printf(stderr, "Developed for the Rhubarb Industrial Interface Board for the Raspberry Pi\n");
-	printf(stderr, "Copyright 2017 3ML LLC\n");
-	printf(stderr, "\n");
-	printf(stderr, "\n");
-	printf(stderr, "Using a given acceleration, deceleration, starting speed, and velocity, this program will construct and execute a trapezoidal move profile over the given distance.\n");
-	printf(stderr, "\n");
-	printf(stderr, "\n");
-	printf(stderr, "Usage:\n");
-	printf(stderr, "-h: display this message\n");
-	printf(stderr, "-s: starting speed in steps/s (1-500)\n");
-	printf(stderr, "-r: drive steps per revolution (default 2000)\n");
-	printf(stderr, "-g: wiringpi output number (default 29)\n");
-	printf(stderr, "-a: acceleration in steps/s^2 (1-1000)\n");
-	printf(stderr, "-d: deceleration in steps/s^2 (1-1000)\n");
-	printf(stderr, "-v: velocity in steps/s (not to exceed 20kHz)\n");
-	printf(stderr, "-n: move distance in steps\n");
+	printf("\n");
+	printf("Rhubarb Motion - a Pulse Train Motion Controller\n");
+	printf("Developed for the Rhubarb Industrial Interface Board for the Raspberry Pi\n");
+	printf("Copyright 2017 3ML LLC\n");
+	printf("\n");
+	printf("\n");
+	printf("Using a given acceleration, deceleration, starting speed, and velocity, this program will construct and execute a trapezoidal move profile over the given distance.\n");
+	printf("\n");
+	printf("\n");
+	printf("Usage:\n");
+	printf("-h: display this message\n");
+	printf("-s: starting speed in steps/s (1-500)\n");
+	printf("-r: drive steps per revolution (default 2000)\n");
+	printf("-g: wiringpi output number (default 29)\n");
+	printf("-a: acceleration in steps/s^2 (1-1000)\n");
+	printf("-d: deceleration in steps/s^2 (1-1000)\n");
+	printf("-v: velocity in revolutions per second (rps) (not to exceed 20kHz pulse frequency)\n");
+	printf("-n: move distance in steps\n");
 	exit(0);
 }
