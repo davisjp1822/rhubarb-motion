@@ -12,6 +12,8 @@
 #define MAX_SAFE_STACK (8*1024)
 
 #include "globals.h"
+#include "motion_control.h"
+#include "pulse_train.h"
 
 #include <sys/stat.h>
 #include <getopt.h>
@@ -26,19 +28,13 @@
 #include <sched.h>
 #include <sys/mman.h>
 
-extern int8_t MOVE_DIRECTION;
-extern int16_t STARTING_SPEED;
-extern int16_t STEPS_PER_REV;
-extern int16_t ACC;
-extern int16_t DEC;
-extern int32_t VELOCITY;
-extern int32_t NUM_STEPS;
 
 extern int8_t WIRINGPI_PULSE_OUTPUT;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 
 extern struct timespec t;
-struct sched_param param;
+extern struct move_params mp;
+static struct sched_param param;
 
 extern void	show_usage();
 extern void	check_rt();
@@ -60,7 +56,7 @@ int main(int argc, char *argv[])
 	rt_setup();
 
 	/* rt setup complete, now pass control to the stepper function */
-	execute_move(t, MOVE_DIRECTION, STARTING_SPEED, ACC, DEC, VELOCITY, NUM_STEPS);
+	execute_move(t, mp);
 
 	return 0;
 }
@@ -91,15 +87,11 @@ void rt_setup()
 void parse_args(int argc, char **argv)
 {	
 	int opt = 0;
-	
-	int16_t STARTING_SPEED = -1;
-	int16_t STEPS_PER_REV = 2000;
+
 	int8_t WIRINGPI_PULSE_OUTPUT = 29;
 	int8_t WIRINGPI_DIRECTION_OUTPUT = 26;
-	int16_t ACC = -1;
-	int16_t DEC = -1;
-	int32_t VELOCITY = -1;
-	int32_t NUM_STEPS = -1;
+	
+	struct move_params mp = init_move_params();
 
 	/* by default, if no options are given, just show the usage */
 	if(argc == 1)
@@ -113,9 +105,9 @@ void parse_args(int argc, char **argv)
 		switch (opt) {
 			
 			case 's':
-				STARTING_SPEED = atoi(optarg);
+				mp.starting_speed = atoi(optarg);
 
-				if(STARTING_SPEED > 500 || STARTING_SPEED <= 0)
+				if(mp.starting_speed > 500 || mp.starting_speed <= 0)
 				{
 					printf("Staring Speed cannot be less than 0 or greater than 500 steps/rev\n");
 					exit(-1);
@@ -123,9 +115,9 @@ void parse_args(int argc, char **argv)
 				break;
 
 			case 'r':
-				STEPS_PER_REV = atoi(optarg);
+				mp.steps_per_rev = atoi(optarg);
 
-				if(STEPS_PER_REV <= 0)
+				if(mp.steps_per_rev <= 0)
 				{
 					printf("Drive steps per rev cannot be less than or equal to zero\n");
 					exit(-1);
@@ -152,9 +144,9 @@ void parse_args(int argc, char **argv)
 				break;
 
 			case 'a':
-				ACC = atoi(optarg);
+				mp.acc = atoi(optarg);
 
-				if(ACC <= 0 || ACC > 1000)
+				if(mp.acc <= 0 || mp.acc > 1000)
 				{
 					printf("\nERROR: Acceleration cannot be less than or equal to 0 or greater than 1000\n");
 					exit(-1);
@@ -162,9 +154,9 @@ void parse_args(int argc, char **argv)
 				break;
 
 			case 'd':
-				DEC = atoi(optarg);
+				mp.dec = atoi(optarg);
 
-				if(DEC <= 0 || DEC > 1000)
+				if(mp.dec <= 0 || mp.dec > 1000)
 				{
 					printf("\nERROR: Deceleration cannot be less than or equal to 0 or greater than 1000\n");
 					exit(-1);
@@ -173,21 +165,21 @@ void parse_args(int argc, char **argv)
 
 			case 'v':
 			{
-				VELOCITY = atoi(optarg);
+				mp.velocity = atoi(optarg);
 
 				/*velocity cannot be negative or zero*/
-				if(VELOCITY <=0)
+				if(mp.velocity <=0)
 				{
 					printf("\nERROR: Velocity cannot be less than or equal to 0\n\n");
 					exit(-1);
 				}
 
 				/* calculate velocity, turn it into a frequency, and test to see if it is above 20kHz */
-				int32_t freq = 1/((double)1/(VELOCITY*STEPS_PER_REV));
+				int32_t freq = 1/((double)1/(mp.velocity*mp.steps_per_rev));
 
 				if(freq > MAX_FREQ)
 				{
-					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dkHz. This limit is derived by the following formula:\n\n1/(1/(velocity * steps_per_rev)).\n", MAX_FREQ);
+					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz. This limit is derived by the following formula:\n\n1/(1/(velocity * steps_per_rev)).\n", MAX_FREQ);
 					printf("Where velocity is set with option -v (revolutions per second) and steps_per_rev is set via -r (steps per revolution). The latter is usually set in the stepper drive itself.\n\n");
 					exit(0);
 				}
@@ -200,15 +192,38 @@ void parse_args(int argc, char **argv)
 			}
 
 			case 'n':
-				NUM_STEPS = atoi(optarg);
+				mp.num_steps = atoi(optarg);
 
-				if(NUM_STEPS > INT8_MAX)
+				if(mp.num_steps > INT8_MAX)
 				{
 					printf("Number of steps/ move value too large\n");
 					exit(-1);
 				}
-				break;
 
+				if(mp.num_steps < 0)
+				{
+					mp.CCW = 1;
+				}
+				else
+				{
+					mp.CW = 1;
+				}
+				break;
+			
+			case 't':
+			{
+				int32_t freq = atoi(optarg);
+
+				if(freq > MAX_FREQ)
+				{
+					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz.\n", MAX_FREQ);
+					exit(-1);
+				}
+
+				pulse(&freq);
+
+				break;
+			}
 			case 'h' :
 			case '?' :
 				show_usage();
@@ -221,7 +236,7 @@ void parse_args(int argc, char **argv)
 	}
 
 	/* if any of these values are uninitialized, dump and show user the help menu */
-	if(STARTING_SPEED == -1 || STEPS_PER_REV == -1 || ACC == -1 || DEC == -1 || VELOCITY == -1 || NUM_STEPS == -1)
+	if(mp.starting_speed == -1 || mp.steps_per_rev == -1 || mp.acc == -1 || mp.dec == -1 || mp.velocity == -1 || mp.num_steps == -1)
 	{
 		printf("Missing argument!\n");
 		show_usage();
@@ -286,11 +301,15 @@ void show_usage()
 	printf("-a: acceleration in steps/s^2 (1-1000)\n");
 	printf("-d: deceleration in steps/s^2 (1-1000)\n");
 	printf("-v: velocity in revolutions per second (rps) (not to exceed 20kHz pulse frequency)\n");
-	printf("-n: move distance in steps\n");
+	printf("-n: move distance in steps (negative values for CCW rotation, positive values for CW rotation)\n");
+	printf("\n");
+	printf("\n");
+	printf("Special Functions:\n");
+	printf("-t: Create pulse train at specified frequency in Hz\n");
 	printf("\n");
 	printf("\n");
 	printf("Example: ./rhubarb_motion -s 100 -a 250 -d 250 -v 10 -n 10000\n");
-	printf("This would move the stepper - with a starting speed of 100 steps/s, an acceleration of 250 steps/s/s, a deceleration of 250 steps/s/s, a velocity of 10 RPS (600RPM) - 10,000 steps\n");
-	printf("In this example, we assume the drive is set to 2000 steps/rev, so the stepper would move 5 revolutions (10,000/2,000). If the lead on your actuator is 1\" per revolution, your actuator would love 5\"\n);
+	printf("This would move the stepper - with a starting speed of 100 steps/s, an acceleration of 250 steps/s/s, a deceleration of 250 steps/s/s, a velocity of 10 RPS (600RPM) - move 10,000 steps CW\n");
+	printf("In this example, we assume the drive is set to 2000 steps/rev, so the stepper would move 5 revolutions (10,000/2,000). If the lead on your actuator is 1\" per revolution, your actuator would love 5\"\n");
 	exit(0);
 }

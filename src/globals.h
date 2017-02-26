@@ -11,6 +11,6 @@
 
 #include <stdint.h>
 
-extern const int16_t MAX_FREQ;
+extern const int32_t MAX_FREQ;
 
 #endif /*GLOBALS_H*/

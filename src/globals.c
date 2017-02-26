@@ -8,4 +8,4 @@
 
 #include "globals.h"
 
-const int16_t MAX_FREQ = 2000;
+const int32_t MAX_FREQ = 20000;
