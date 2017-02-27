@@ -7,7 +7,9 @@
 */
 
 #include <stdint.h>
+
 #include "motion_control.h"
+#include "globals.h"
 
 /* returns -1 if unsuccessful */
 int execute_move(struct move_params mp)
@@ -30,4 +32,14 @@ struct move_params init_move_params()
 	m.steps_per_rev=2000;
 	
 	return m;
+}
+
+inline void tsnorm(struct timespec *ts)
+{
+	while(ts->tv_nsec >= NSEC_PER_SEC)
+	{
+		ts->tv_nsec -= NSEC_PER_SEC;
+		ts->tv_sec++;
+	}
+		
 }

@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <wiringPi.h>
 
 extern int8_t WIRINGPI_PULSE_OUTPUT;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
@@ -42,6 +43,7 @@ int main(int argc, char *argv[])
 {
 
 	mp = init_move_params();
+	wiringPiSetup();
 
 	/* pre checks - make sure user is root and that we are running a PREEMPT kernel */
 	check_root();
@@ -87,6 +89,7 @@ void rt_setup()
 void parse_args(int argc, char **argv)
 {	
 	int opt = 0;
+	int32_t freq = 0;
 
 	/* by default, if no options are given, just show the usage */
 	if(argc == 1)
@@ -170,7 +173,7 @@ void parse_args(int argc, char **argv)
 				}
 
 				/* calculate velocity, turn it into a frequency, and test to see if it is above 20kHz */
-				int32_t freq = 1/((double)1/(mp.velocity*mp.steps_per_rev));
+				freq = 1/((double)1/(mp.velocity*mp.steps_per_rev));
 
 				if(freq > MAX_FREQ)
 				{
@@ -189,7 +192,7 @@ void parse_args(int argc, char **argv)
 			case 'n':
 				mp.num_steps = atoi(optarg);
 
-				if(mp.num_steps > INT8_MAX)
+				if(abs(mp.num_steps > INT8_MAX))
 				{
 					printf("Number of steps/ move value too large\n");
 					exit(-1);
@@ -207,20 +210,11 @@ void parse_args(int argc, char **argv)
 			
 			case 't':
 			{
-				int32_t freq = atoi(optarg);
+				freq = atoi(optarg);
 
-				if(freq > MAX_FREQ)
+				if(freq > MAX_FREQ || freq <= 0)
 				{
-					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz.\n", MAX_FREQ);
-					exit(-1);
-				}
-
-				if(pulse(&freq) == 0)
-				{
-					exit(0);
-				}
-				else
-				{
+					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz or less than or equal to 0\n", MAX_FREQ);
 					exit(-1);
 				}
 
@@ -236,13 +230,31 @@ void parse_args(int argc, char **argv)
 				exit(0);
 		}
 	}
-
-	/* if any of these values are uninitialized, dump and show user the help menu */
-	if(mp.starting_speed == -1 || mp.steps_per_rev == -1 || mp.acc == -1 || mp.dec == -1 || mp.velocity == -1 || mp.num_steps == -1)
+	
+	/* if doing motion, not pulsing, check for presence of the other required commands */
+	if(opt != 't')
 	{
-		printf("Missing argument!\n");
-		show_usage();
+		if(mp.starting_speed == -1 || mp.steps_per_rev == -1 || mp.acc == -1 || mp.dec == -1 || mp.velocity == -1 || mp.num_steps == -1)
+		{
+			printf("Missing argument!\n");
+			show_usage();
+		}
 	}
+	/* just doing a pulse train - no special handling required */
+	else
+	{
+		/* the return val check is here just for completeness, really. the user will always stop the execution with ctrl-c */
+		if(pulse(&freq) != 0)
+		{
+			printf("\nERROR: Error in pulse train execution, exiting...\n");
+			exit(-1);
+		}
+		else
+		{
+			exit(0)
+		}
+	}
+
 }
 
 void check_root()

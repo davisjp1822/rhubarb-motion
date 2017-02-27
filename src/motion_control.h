@@ -26,5 +26,6 @@ struct move_params
 
 int execute_move(struct move_params mp);
 struct move_params init_move_params();
+inline void tsnorm(struct timespec *ts);
 
 #endif /*MOTION_CONTROL_H*/
