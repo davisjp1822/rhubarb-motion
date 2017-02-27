@@ -24,9 +24,7 @@ struct move_params
 	int32_t steps_per_rev;
 };
 
-/* returns -1 if unsuccessful */
-extern int execute_move(struct timespec t, struct move_params mp);
-
-extern struct move_params init_move_params();
+int execute_move(struct move_params mp);
+struct move_params init_move_params();
 
 #endif /*MOTION_CONTROL_H*/

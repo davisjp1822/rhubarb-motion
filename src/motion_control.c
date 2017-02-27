@@ -10,7 +10,7 @@
 #include "motion_control.h"
 
 /* returns -1 if unsuccessful */
-int execute_move(struct timespec t, struct move_params mp)
+int execute_move(struct move_params mp)
 {
 
 

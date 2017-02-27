@@ -24,27 +24,25 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <time.h>
 #include <sched.h>
 #include <sys/mman.h>
-
 
 extern int8_t WIRINGPI_PULSE_OUTPUT;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 
-extern struct timespec t;
-extern struct move_params mp;
-static struct sched_param param;
+struct move_params mp;
 
-extern void	show_usage();
-extern void	check_rt();
-extern void	check_root();
-extern void	parse_args();
-extern void rt_setup();
+void	show_usage();
+void	check_rt();
+void	check_root();
+void	parse_args();
+void 	rt_setup();
 
 int main(int argc, char *argv[])
 {
-	
+
+	mp = init_move_params();
+
 	/* pre checks - make sure user is root and that we are running a PREEMPT kernel */
 	check_root();
 	check_rt();
@@ -56,14 +54,16 @@ int main(int argc, char *argv[])
 	rt_setup();
 
 	/* rt setup complete, now pass control to the stepper function */
-	execute_move(t, mp);
+	execute_move(mp);
 
 	return 0;
 }
 
 void rt_setup()
 {
+	
 	/* declare ourselves as a realtime task and set the scheduler */
+	struct sched_param param;
 	param.sched_priority = 49;
 	if(sched_setscheduler(0, SCHED_FIFO, &param) == -1)
 	{
@@ -88,18 +88,13 @@ void parse_args(int argc, char **argv)
 {	
 	int opt = 0;
 
-	int8_t WIRINGPI_PULSE_OUTPUT = 29;
-	int8_t WIRINGPI_DIRECTION_OUTPUT = 26;
-	
-	struct move_params mp = init_move_params();
-
 	/* by default, if no options are given, just show the usage */
 	if(argc == 1)
 	{
 		show_usage();
 	}
 
-	while ((opt = getopt(argc, argv, "hs:r:g:a:d:v:n:z:")) != -1)
+	while ((opt = getopt(argc, argv, "hs:r:g:a:d:v:n:z:t:")) != -1)
 	{
 		
 		switch (opt) {
@@ -220,7 +215,14 @@ void parse_args(int argc, char **argv)
 					exit(-1);
 				}
 
-				pulse(&freq);
+				if(pulse(&freq) == 0)
+				{
+					exit(0);
+				}
+				else
+				{
+					exit(-1);
+				}
 
 				break;
 			}

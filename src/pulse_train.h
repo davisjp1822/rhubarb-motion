@@ -10,7 +10,8 @@
 #define PULSE_TRAIN_H
 
 #include <stdint.h>
+#include <stdio.h>
 
-extern int pulse(const int32_t *freq);
+int pulse(const int32_t *freq);
 
 #endif /*PULSE_TRAIN_H*/

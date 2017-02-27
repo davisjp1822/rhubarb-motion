@@ -11,6 +11,8 @@
 
 #include <stdint.h>
 
-extern const int32_t MAX_FREQ;
+const int32_t MAX_FREQ;
+int8_t WIRINGPI_PULSE_OUTPUT;
+int8_t WIRINGPI_DIRECTION_OUTPUT;
 
 #endif /*GLOBALS_H*/

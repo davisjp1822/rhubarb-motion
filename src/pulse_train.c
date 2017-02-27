@@ -8,10 +8,14 @@
 
 #include "pulse_train.h"
 
-extern int pulse(const int32_t *freq)
+extern int8_t WIRINGPI_PULSE_OUTPUT;
+
+int pulse(const int32_t *freq)
 {
+	fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n\n", *freq, WIRINGPI_PULSE_OUTPUT);
 
-	printf("\nHERE!");
+	
 
+	return 0;
 }
 
