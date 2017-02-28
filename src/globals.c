@@ -8,6 +8,6 @@
 
 #include "globals.h"
 
-const int32_t MAX_FREQ = 20000;
+const int32_t MAX_FREQ = 30000;
 int8_t WIRINGPI_PULSE_OUTPUT = 29;
 int8_t WIRINGPI_DIRECTION_OUTPUT = 26;

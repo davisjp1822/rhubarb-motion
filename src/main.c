@@ -66,7 +66,7 @@ void rt_setup()
 	
 	/* declare ourselves as a realtime task and set the scheduler */
 	struct sched_param param;
-	param.sched_priority = 49;
+	param.sched_priority = 85;
 	if(sched_setscheduler(0, SCHED_FIFO, &param) == -1)
 	{
 		perror("Could not set scheduler");
@@ -90,7 +90,7 @@ void parse_args(int argc, char **argv)
 {	
 	int opt = 0;
 	int32_t freq = 0;
-
+	int8_t pulse_flag = 0;
 	/* by default, if no options are given, just show the usage */
 	if(argc == 1)
 	{
@@ -99,7 +99,6 @@ void parse_args(int argc, char **argv)
 
 	while ((opt = getopt(argc, argv, "hs:r:g:a:d:v:n:z:t:")) != -1)
 	{
-		
 		switch (opt) {
 			
 			case 's':
@@ -217,7 +216,8 @@ void parse_args(int argc, char **argv)
 					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz or less than or equal to 0\n", MAX_FREQ);
 					exit(-1);
 				}
-
+				
+				pulse_flag = 1;
 				break;
 			}
 			case 'h' :
@@ -231,19 +231,8 @@ void parse_args(int argc, char **argv)
 		}
 	}
 	
-	/* if doing motion, not pulsing, check for presence of the other required commands */
-	if(opt != 't')
+	if(pulse_flag == 1)
 	{
-		if(mp.starting_speed == -1 || mp.steps_per_rev == -1 || mp.acc == -1 || mp.dec == -1 || mp.velocity == -1 || mp.num_steps == -1)
-		{
-			printf("Missing argument!\n");
-			show_usage();
-		}
-	}
-	/* just doing a pulse train - no special handling required */
-	else
-	{
-		/* the return val check is here just for completeness, really. the user will always stop the execution with ctrl-c */
 		if(pulse(&freq) != 0)
 		{
 			printf("\nERROR: Error in pulse train execution, exiting...\n");
@@ -251,10 +240,17 @@ void parse_args(int argc, char **argv)
 		}
 		else
 		{
-			exit(0)
+			exit(0);
 		}
 	}
-
+	else
+	{
+		if(mp.starting_speed == -1 || mp.steps_per_rev == -1 || mp.acc == -1 || mp.dec == -1 || mp.velocity == -1 || mp.num_steps == -1)
+		{
+			printf("Missing argument!\n");
+			show_usage();
+		}
+	}
 }
 
 void check_root()
