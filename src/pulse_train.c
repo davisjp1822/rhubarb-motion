@@ -34,8 +34,8 @@ int pulse(const int32_t *freq)
 	 * Since we are not PWM, the duty cycle is 50%, which means, we have to reverse the f = 1/p equation and then divide by two to get the pulse on/off width
 	**/
 	long double pulse_width = 0;
-	pulse_width = (1.0/((long double)*freq))/2.0;
-	fprintf(stderr, "\nUsing Pulse Width of %Lfs\n", pulse_width);
+	pulse_width = ((1.0/((long double)*freq))/2.0)*NSEC_PER_SEC;
+	fprintf(stderr, "\nUsing Pulse Width of %Lfs\n", pulse_width/NSEC_PER_SEC);
 
 	/* setup the GPIO pin - wiringPiSetup() was called in main.c */
 	pinMode(WIRINGPI_PULSE_OUTPUT, OUTPUT);
@@ -59,7 +59,7 @@ int pulse(const int32_t *freq)
 			should_pulse = 1;
 		}
 		
-		t.tv_nsec += (pulse_width*NSEC_PER_SEC);
+		t.tv_nsec += pulse_width;
 		tsnorm(&t);
 	}
 
