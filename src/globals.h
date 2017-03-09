@@ -10,11 +10,14 @@
 #define GLOBALS_H
 
 #define NSEC_PER_SEC 1000000000
+#define TRUE 1
+#define FALSE 0
 
 #include <stdint.h>
 
 const int32_t MAX_FREQ;
 int8_t WIRINGPI_PULSE_OUTPUT;
 int8_t WIRINGPI_DIRECTION_OUTPUT;
+int8_t VERBOSE;
 
 #endif /*GLOBALS_H*/
