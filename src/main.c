@@ -37,7 +37,7 @@ struct move_params mp;
 void	show_usage(void);
 void	check_rt(void);
 void	check_root(void);
-void	parse_args(void);
+void	parse_args();
 void 	rt_setup(void);
 
 int main(int argc, char *argv[])
@@ -275,7 +275,7 @@ void check_root()
 {
 	if(geteuid() != 0)
 	{
-		printf("\n\n***You must be root (try using sudo) to run this program!***\n");
+		printf("\n***You must be root (try using sudo) to run this program!***\n\n");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -300,7 +300,7 @@ void check_rt()
 
     if(crit1 == NULL && !crit2)
     {
-		printf("\n\n***This is NOT a PREEMPT kernel - please install RTLinux***\n");
+		printf("\n***This is NOT a PREEMPT kernel - please install RTLinux***\n\n");
     	exit(EXIT_FAILURE);
     }
 }

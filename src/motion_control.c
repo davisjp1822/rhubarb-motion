@@ -11,6 +11,9 @@
 #include <time.h>
 #include <math.h>
 #include <inttypes.h>
+#include <stdlib.h>
+#include <bsd/string.h>
+#include <stdio.h>
 
 #include "motion_control.h"
 #include "globals.h"
@@ -28,7 +31,7 @@ static uint64_t acc_stop_point = 0;
 static uint64_t dec_start_point = 0;
 static int8_t should_pulse = FALSE;
 static struct timespec main_timer;
-static struct *move_params this_move;
+static struct move_params *this_move;
 
 /*
  * The state functions defined below define the actual actions in the state (move logic, etc).
@@ -45,8 +48,6 @@ static int state_estop(void);
 static int state_exit_success(void);
 static int state_exit_fail(void);
 
-static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_codes rc);
-
 /* STATE MACHINE SETUP - STEP 2
  * Next, we setup a function pointer and some variables. 
  * A quick note on function pointers. They are like placholders for actual functions. They define what the function looks like, not what the actual function is.
@@ -62,10 +63,10 @@ int (*state[])(void) = {state_start, state_accel, state_run, state_decel, state_
 /* this enum allows us to refer to the array members above by name, rather than index. For example, state_start == 0, etc
  * These values HAVE to be in sync with the array of function pointers above
  */
-enum state_codes = {state_start, state_accel, state_run, state_decel, state_estop, state_exit_success, state_exit_fail};
+enum state_codes {start, accel, run, decel, estop, exit_success, exit_fail};
 
 /* set another enum to give us more legible state return codes */
-enum state_ret_codes = {done, fail, repeat, estop};
+enum state_ret_codes {done, fail, repeat, stop};
 
 /* STATE MACHINE SETUP - STEP 3
  * This table is very important. This is where all of the possible state transitions are mapped. The template is the "transition" struct -
@@ -76,38 +77,39 @@ enum state_ret_codes = {done, fail, repeat, estop};
  * The transition map comes from your state diagram. In the case of this program, the diagram (plotted in GNU Dia), may be found in this Github repository.
  */
 
-static struct transition
+struct transition
 {
 	enum state_codes src_state;
-	enum ret_codes ret_code;
+	enum state_ret_codes ret_code;
 	enum state_codes dst_state;
-}
+};
 
 static struct transition state_transitions[] =
 {
-	{state_start, done, state_accel},
-	{state_start, fail, state_exit_fail},
-	{state_start, repeat, state_exit},
-	{state_start, estop, state_estop},
+	{start, done, accel},
+	{start, fail, exit_fail},
+	{start, repeat, start},
+	{start, stop, stop},
 
-	{state_accel, done, state_run},
-	{state_accel, fail, state_exit_fail},
-	{state_accel, repeat, state_accel},
-	{state_accel, estop, state_estop},
+	{accel, done, run},
+	{accel, fail, exit_fail},
+	{accel, repeat, accel},
+	{accel, stop, stop},
 
-	{state_run, done, state_decel},
-	{state_run, fail, state_exit_fail},
-	{state_run, repeat, state_run},
-	{state_run, estop, state_estop},
+	{run, done, decel},
+	{run, fail, exit_fail},
+	{run, repeat, run},
+	{run, stop, stop},
 
-	{state_decel, done, state_exit_success},
-	{state_decel, fail, state_exit_fail},
-	{state_decel, repeat, state_decel},
-	{state_decel, estop, state_estop}
+	{decel, done, exit_success},
+	{decel, fail, exit_fail},
+	{decel, repeat, decel},
+	{decel, stop, stop}
+};
 
-}
+static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_codes rc);
 
-int execute_move(struct *move_params mp)
+int execute_move(struct move_params *mp)
 {
 	/*
 	 * when first entering the move, set current state to state_start and init all variables
@@ -119,7 +121,7 @@ int execute_move(struct *move_params mp)
 	 */
 	
 	this_move = mp;
-	enum state_codes current_state = state_start;
+	enum state_codes current_state = start;
 	enum state_ret_codes rc;
 	int (*m_state)(void);
 
@@ -141,18 +143,18 @@ int execute_move(struct *move_params mp)
 		/* setup some conditionals. if in an exit state or estop state, break the loop and exit.
 		 * otherwise, call the lookup function to find the next state
 		 */
-		if(current_state == state_exit_success)
+		if(current_state == exit_success)
 		{
 			break;
 		}
 
-		if(current_state == state_exit_fail)
+		if(current_state == exit_fail)
 		{
 			/* the calling function should print an error message */
 			return EXIT_FAILURE;
 		}
 
-		if(current_state == state_estop)
+		if(current_state == estop)
 		{
 			/* the calling function should print an error message */
 			return EXIT_FAILURE;
@@ -179,7 +181,7 @@ static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_c
 
 	for(i=0; i < (sizeof(state_transitions) / sizeof(state_transitions[0])); i++)
 	{
-		struct *transition t = &state_transitions[i];
+		struct transition *t = &state_transitions[i];
 		
 		if(t->src_state == cs && t->ret_code == rc)
 		{
@@ -196,39 +198,40 @@ static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_c
 	{
 		if(ret_state != cs)
 		{
-			char state_name[100];
+			char state_name[100] = {0};
 
 			switch(ret_state)
 			{
-				case state_start:
-					state_name = "start";
+				case start:
+					strlcpy(state_name, "start", sizeof("start"));
 					break;
 
-				case state_accel:
-					state_name = "accel";
+				case accel:
+					strlcpy(state_name, "accel", sizeof("accel"));
 					break;
 
-				case state_run:
-					state_name = "run";
+				case run:
+					strlcpy(state_name, "run", sizeof("run"));
 					break;
 
-				case state_decel:
-					state_name = "decel";
+				case decel:
+					strlcpy(state_name, "decel", sizeof("decel"));
 					break;
 
-				case state_estop:
-					state_name = "e-stop";
+				case estop:
+					strlcpy(state_name, "e-stop", sizeof("e-stop"));
 					break;
 
-				case state_exit_success:
-					state_name = "exit with success";
+				case exit_success:
+					strlcpy(state_name, "exit with success", sizeof("exit with success"));
 					break;
 
-				case state_exit_fail:
-					state_name = "exit with fail";
+				case exit_fail:
+					strlcpy(state_name, "exit with fail", sizeof("exit with fail"));
 					break;
 				
 				default:
+					strlcpy(state_name, "unknown", sizeof("unknown"));
 					break;
 			}
 
@@ -255,7 +258,7 @@ static int state_start(void)
 	should_pulse = TRUE;
 	
 	/* if we can't init the clock, bail from the program as something is REALLY not right */
-	if(clock_gettime(CLOCK_MONOTONIC, &t) < 0)
+	if(clock_gettime(CLOCK_MONOTONIC, &main_timer) < 0)
 	{
 		perror("!!! ERROR:");
 		rc = fail;
@@ -293,7 +296,7 @@ static int state_start(void)
 	dec_start_point = this_move->num_steps - (pow(this_move->velocity, 2)/(2 * this_move->dec));
 
 	uint64_t calc_acc_time = (this_move->velocity - this_move->starting_speed)/this_move->acc;
-	uint64_t calc_dec_time = (this_move->velocity - this_move)/this_move->dec;
+	uint64_t calc_dec_time = this_move->velocity/this_move->dec;
  	
 	/* acc test */
 	if((acc_stop_point/this_move->velocity) != calc_acc_time)
@@ -305,7 +308,7 @@ static int state_start(void)
 	/* dec test */
 	if((dec_start_point/this_move->velocity) != calc_dec_time)
 	{
-		fprintf(stderr, "!!! ERROR: dec distance complete time of %" PRIu64 "s is not equal to calculated time of %" PRIu64, dec_stop_point/this_move->velocity, calc_dec_time);
+		fprintf(stderr, "!!! ERROR: dec distance complete time of %" PRIu64 "s is not equal to calculated time of %" PRIu64, dec_start_point/this_move->velocity, calc_dec_time);
 		rc = fail;
 	}
 

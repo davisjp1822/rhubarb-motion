@@ -24,7 +24,7 @@ struct move_params
 	int32_t steps_per_rev;
 };
 
-int execute_move(struct *move_params mp);
+int execute_move(struct move_params *mp);
 struct move_params init_move_params();
 inline void tsnorm(struct timespec *ts);
 
