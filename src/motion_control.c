@@ -203,35 +203,35 @@ static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_c
 			switch(ret_state)
 			{
 				case start:
-					strlcpy(state_name, "start", sizeof("start"));
+					strlcpy(state_name, "start", sizeof(state_name));
 					break;
 
 				case accel:
-					strlcpy(state_name, "accel", sizeof("accel"));
+					strlcpy(state_name, "accel", sizeof(state_name));
 					break;
 
 				case run:
-					strlcpy(state_name, "run", sizeof("run"));
+					strlcpy(state_name, "run", sizeof(state_name));
 					break;
 
 				case decel:
-					strlcpy(state_name, "decel", sizeof("decel"));
+					strlcpy(state_name, "decel", sizeof(state_name));
 					break;
 
 				case estop:
-					strlcpy(state_name, "e-stop", sizeof("e-stop"));
+					strlcpy(state_name, "e-stop", sizeof(state_name));
 					break;
 
 				case exit_success:
-					strlcpy(state_name, "exit with success", sizeof("exit with success"));
+					strlcpy(state_name, "exit with success", sizeof(state_name));
 					break;
 
 				case exit_fail:
-					strlcpy(state_name, "exit with fail", sizeof("exit with fail"));
+					strlcpy(state_name, "exit with fail", sizeof(state_name));
 					break;
 				
 				default:
-					strlcpy(state_name, "unknown", sizeof("unknown"));
+					strlcpy(state_name, "unknown", sizeof(state_name));
 					break;
 			}
 
@@ -283,34 +283,13 @@ static int state_start(void)
 	 *
 	 */
 	
-	/* since these are unsigned integers, we don't have to worry about undefined behavior.
+	/* 
+	 * since these are unsigned integers, we don't have to worry about undefined behavior.
 	 * but, we do have to worry about rollover. calc first, then check second.
 	 * 
-	 * For the acceleration rollover check, look at the distance calculated. Compare it to (velocity-starting_speed)/acc. 
-	 * If they are different, we know that something went wrong.
-	 *
-	 * For the decel rolover check, we should be able to test the same way.
-	 *
 	 */
 	acc_stop_point = pow((this_move->velocity - this_move->starting_speed), 2)/(2 * this_move->acc);
-	dec_start_point = this_move->num_steps - (pow(this_move->velocity, 2)/(2 * this_move->dec));
-
-	uint64_t calc_acc_time = (this_move->velocity - this_move->starting_speed)/this_move->acc;
-	uint64_t calc_dec_time = this_move->velocity/this_move->dec;
- 	
-	/* acc test */
-	if((acc_stop_point/this_move->velocity) != calc_acc_time)
-	{
-		fprintf(stderr, "!!! ERROR: acc distance complete time of %" PRIu64 "s is not equal to calculated time of %" PRIu64, acc_stop_point/this_move->velocity, calc_acc_time);
-		rc = fail;
-	}
-	
-	/* dec test */
-	if((dec_start_point/this_move->velocity) != calc_dec_time)
-	{
-		fprintf(stderr, "!!! ERROR: dec distance complete time of %" PRIu64 "s is not equal to calculated time of %" PRIu64, dec_start_point/this_move->velocity, calc_dec_time);
-		rc = fail;
-	}
+	dec_start_point = this_move->num_steps - acc_stop_point - (pow(this_move->velocity, 2)/(2 * this_move->dec));
 
 	return rc;
 }

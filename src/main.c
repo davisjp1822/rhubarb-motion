@@ -97,7 +97,7 @@ void parse_args(int argc, char **argv)
 		show_usage();
 	}
 
-	while ((opt = getopt(argc, argv, "hs:r:g:a:d:v:n:z:t:y:")) != -1)
+	while ((opt = getopt(argc, argv, "yhs:r:g:a:d:v:n:z:t:")) != -1)
 	{
 		switch (opt) {
 			
@@ -191,7 +191,7 @@ void parse_args(int argc, char **argv)
 			case 'n':
 				mp.num_steps = atoi(optarg);
 
-				if(abs(mp.num_steps > INT8_MAX))
+				if(abs(mp.num_steps > INT32_MAX))
 				{
 					printf("Number of steps/ move value too large\n");
 					exit(EXIT_FAILURE);
