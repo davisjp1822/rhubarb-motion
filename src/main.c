@@ -33,8 +33,8 @@
 extern int8_t WIRINGPI_PULSE_OUTPUT;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 extern int8_t WIRINGPI_ESTOP_INPUT;
-extern int8_t VERBOSE;
-extern int8_t NO_MOTOR;
+extern _Bool VERBOSE;
+extern _Bool NO_MOTOR;
 extern char OUTPUT_FILE_NAME[PATH_MAX];
 
 struct move_params mp;
@@ -268,12 +268,12 @@ void parse_args(int argc, char **argv)
 
 			case 'q':
 			{
-				NO_MOTOR = TRUE;
+				NO_MOTOR = true;
 				break;
 			}
 
 			case 'y':
-				VERBOSE = TRUE;
+				VERBOSE = true;
 				break;
 
 			case 'h' :
@@ -301,14 +301,14 @@ void parse_args(int argc, char **argv)
 	 * for the AMCI SD7540, a HIGH output is CW
 	 **/
  
- 	if(this_move->CW == 1)
+ 	if(mp.CW == 1)
 	{
 		digitalWrite(WIRINGPI_DIRECTION_OUTPUT, 1);
 	}
  
- 	if(this_move->CCW == 1)
+ 	if(mp.CCW == 1)
  	{
-		digitalWrite(WIRINGPI_DIRECTION_OUTPUT, 0};
+		digitalWrite(WIRINGPI_DIRECTION_OUTPUT, 0);
 	}
 
 	/**
@@ -317,7 +317,7 @@ void parse_args(int argc, char **argv)
 
 	if(pulse_flag == 1)
 	{
-		if(pulse(freq, mp.num_steps) != 0)
+		if(pulse_train(freq, mp.num_steps) != 0)
 		{
 			printf("\nERROR: Error in pulse train execution, exiting...\n");
 			exit(EXIT_FAILURE);

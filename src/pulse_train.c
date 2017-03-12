@@ -15,7 +15,10 @@
 #include <time.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <math.h>
 
+extern _Bool VERBOSE;
+extern _Bool NO_MOTOR;
 extern int8_t WIRINGPI_PULSE_OUTPUT;
 extern int8_t WIRINGPI_ESTOP_INPUT;
 
@@ -23,18 +26,29 @@ extern int8_t WIRINGPI_ESTOP_INPUT;
  * This will send out a pulse of a certain frequency until the user exits with ctrl-c or stop_point is reached
 **/
 
-int8_t pulse(const int32_t freq, const int64_t stop_point)
+int8_t pulse_train(const int32_t freq, const int64_t stop_point)
 {
-	fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n\n", freq, WIRINGPI_PULSE_OUTPUT);
+	/* stop_point should always be positive, since direction is set by an output */
+	int64_t abs_sp = abs(stop_point);
+
+	/* still check against stop_point, since it would only be set negative by main.c if it is unused */
+	if(stop_point > 0)
+	{
+		fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d for %" PRId64 " steps...\nPress Ctrl-C to exit...\n", freq, WIRINGPI_PULSE_OUTPUT, abs_sp);
+	}
+	else
+	{
+		fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n", freq, WIRINGPI_PULSE_OUTPUT);
+	}
 
 	/* in this case, just call with freq, the -1 values signal that we are just doing a simple pulse output */
-	pulse(freq, -1, -1, stop_point, NULL);
+	return pulse_trap(freq, -1, -1, abs_sp, NULL);
 }
 
 /** 
  * the actual output pulsing brains
  **/
-int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const int64_t stop_point, uint64_t *motor_pos)
+int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, const int64_t stop_point, uint64_t *motor_pos)
 {
 	
 	/*
@@ -56,7 +70,7 @@ int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const 
 	long double pulse_width = 0;
 	pulse_width = ((1.0/((long double)freq))/2.0)*NSEC_PER_SEC;
 	
-	if(VERBOSE == TRUE)
+	if(VERBOSE == true)
 	{
 		fprintf(stderr, "\nUsing Pulse Width of %Lfs\n", pulse_width/NSEC_PER_SEC);
 	}
@@ -82,7 +96,7 @@ int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const 
 		while(1)
 		{	
 			/* check for e-stop condition */
-			if(debounce_input_read(WIRINGPI_ESTOP_INPUT, &estop_int, &t) == 1)
+			if(debounce_input_read(WIRINGPI_ESTOP_INPUT, &estop_int, t) == 1)
 			{
 				printf("\n!!!ERROR: E-Stop detected, exiting!\n");
 				exit(EXIT_FAILURE);
@@ -92,7 +106,7 @@ int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const 
 
 			if(should_pulse == 1)
 			{	
-				if(NO_MOTOR == FALSE)
+				if(NO_MOTOR == false)
 				{
 					digitalWrite(WIRINGPI_PULSE_OUTPUT, HIGH);
 				}
@@ -101,7 +115,7 @@ int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const 
 			}
 			else
 			{
-				if(NO_MOTOR == FALSE)
+				if(NO_MOTOR == false)
 				{
 					digitalWrite(WIRINGPI_PULSE_OUTPUT, LOW);
 				}
@@ -111,7 +125,7 @@ int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const 
 			/* after pulsing is done, check to see if we have hit the stop limit */
 			if(stop_point > 0 && stop_point == pos)
 			{
-				fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)", pos);
+				fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)\n", pos);
 				return 0;
 			}
 

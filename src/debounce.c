@@ -18,20 +18,15 @@
 
 static const int8_t DEBOUNCE_TIME = 0.3;
 static const int8_t SAMPLING_RATE = 10;
-static const int8_t MAXIMUM = SAMPLING RATE / DEBOUNCE_TIME;
+#define MAXIMUM (SAMPLING_RATE / DEBOUNCE_TIME)
 
-int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, const struct *timespec t)
+int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, const struct timespec t)
 {
-	/* These are the variables used */
-	int8_t input;       /* 0 or 1 depending on the input signal */
-	int16_t integrator;  /* Will range from 0 to the specified MAXIMUM */
-	int8_t output;      /* Cleaned-up version of the input signal */
-
-	/*
+	/**
 	 * This function is typically going to be called from some type of control loop. Therefore, it is up to use to use t to 
 	 * ensure that we are sampling at the correct sampling rate, which is defined by SAMPLING_RATE (Hz).
-	 */
-	if((t->tv_nsec/NSEC_PER_MSEC) % SAMPLING_RATE == 0)
+	 **/
+	if((t.tv_nsec/NSEC_PER_MSEC) % SAMPLING_RATE == 0)
 	{
 		/* Step 1: Update the integrator based on the input signal.  Note that the 
 		integrator follows the input, decreasing or increasing towards the limits as 
@@ -41,12 +36,12 @@ int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, co
 		{
 			if(*integrator > 0)
 			{
-				*integrator--;
+				(*integrator)--;
 			}
 		}
 		else if(*integrator < MAXIMUM)
 		{
-    		*integrator++;
+    		(*integrator)++;
 		}
 
 		/* Step 2: Update the output state based on the integrator.  Note that the
@@ -63,5 +58,8 @@ int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, co
 			return 1;
 		}
 	}
+
+	/* should never reach here */
+	return 0;
 }
 

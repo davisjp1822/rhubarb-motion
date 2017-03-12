@@ -50,6 +50,6 @@ in the presence of noise.
 #include <time.h>
 #include <stdint.h>
 
-int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, const struct *timespec t);
+int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, const struct timespec t);
 
 #endif /* DEBOUNCE_H */ 

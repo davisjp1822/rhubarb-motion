@@ -11,14 +11,13 @@
 
 #define NSEC_PER_SEC 1000000000
 #define NSEC_PER_MSEC 1000000
-#define TRUE 1
-#define FALSE 0
 
 #define PULSE_ERR_ESTOP -2
 #define PULSE_ERR_FAIL -1
 
 #include <stdint.h>
 #include <linux/limits.h>
+#include <stdbool.h>
 
 const int32_t MAX_FREQ;
 
@@ -26,8 +25,8 @@ int8_t WIRINGPI_PULSE_OUTPUT;
 int8_t WIRINGPI_DIRECTION_OUTPUT;
 int8_t WIRINGPI_ESTOP_INPUT;
 
-int8_t VERBOSE;
-int8_t NO_MOTOR;
+_Bool VERBOSE;
+_Bool NO_MOTOR;
 
 char OUTPUT_FILE_PATH[PATH_MAX];
 

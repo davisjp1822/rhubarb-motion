@@ -19,6 +19,7 @@
 #include "globals.h"
 #include "pulse_train.h"
 
+extern _Bool VERBOSE;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 
 static uint64_t motor_pos = 0;
@@ -193,7 +194,7 @@ static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_c
 	assert(found == 1);
 	
 	/* also throw in a debug message about a state change */
-	if(VERBOSE == TRUE)
+	if(VERBOSE == true)
 	{
 		if(ret_state != cs)
 		{
