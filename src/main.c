@@ -9,7 +9,7 @@
 */
 
 #define _GNU_SOURCE
-#define MAX_SAFE_STACK (8*1024)
+#define MAX_SAFE_STACK (100*1024)
 
 #include "globals.h"
 #include "motion_control.h"
@@ -27,10 +27,15 @@
 #include <sched.h>
 #include <sys/mman.h>
 #include <wiringPi.h>
+#include <bsd/string.h>
+#include <linux/limits.h>
 
 extern int8_t WIRINGPI_PULSE_OUTPUT;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
+extern int8_t WIRINGPI_ESTOP_INPUT;
 extern int8_t VERBOSE;
+extern int8_t NO_MOTOR;
+extern char OUTPUT_FILE_NAME[PATH_MAX];
 
 struct move_params mp;
 
@@ -91,13 +96,14 @@ void parse_args(int argc, char **argv)
 	int8_t opt = 0;
 	int32_t freq = 0;
 	int8_t pulse_flag = 0;
+
 	/* by default, if no options are given, just show the usage */
 	if(argc == 1)
 	{
 		show_usage();
 	}
 
-	while ((opt = getopt(argc, argv, "yhs:r:g:a:d:v:n:z:t:")) != -1)
+	while ((opt = getopt(argc, argv, "yhsq:r:g:a:d:v:n:z:t:x:o:")) != -1)
 	{
 		switch (opt) {
 			
@@ -137,8 +143,18 @@ void parse_args(int argc, char **argv)
 				if(WIRINGPI_DIRECTION_OUTPUT != 26 && WIRINGPI_DIRECTION_OUTPUT != 27 && WIRINGPI_DIRECTION_OUTPUT != 28 && WIRINGPI_DIRECTION_OUTPUT != 29)
 				{
 					printf("\nERROR: You must specify a valid output for the Rhubarb using WiringPi outputs 26, 27, 28, or 29.\n");
+					exit(EXIT_FAILURE);
 				}
 				break;
+
+			case 'x':
+				WIRINGPI_ESTOP_INPUT = atoi(optarg);
+
+				if(WIRINGPI_ESTOP_INPUT > 31 || WIRINGPI_ESTOP_INPUT < 0 || WIRINGPI_ESTOP_INPUT >= 26)
+				{
+					printf("\nERROR: You must specify a valid WiringPi input for use with the E-Stop\n");
+					exit(EXIT_FAILURE);
+				}
 
 			case 'a':
 				mp.acc = atoi(optarg);
@@ -191,9 +207,9 @@ void parse_args(int argc, char **argv)
 			case 'n':
 				mp.num_steps = atoi(optarg);
 
-				if(abs(mp.num_steps > INT32_MAX))
+				if(abs(mp.num_steps > INT64_MAX))
 				{
-					printf("Number of steps/ move value too large\n");
+					printf("\nNumber of steps/ move value too large\n");
 					exit(EXIT_FAILURE);
 				}
 
@@ -205,6 +221,7 @@ void parse_args(int argc, char **argv)
 				{
 					mp.CW = 1;
 				}
+
 				break;
 			
 			case 't':
@@ -216,8 +233,42 @@ void parse_args(int argc, char **argv)
 					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz or less than or equal to 0\n", MAX_FREQ);
 					exit(EXIT_FAILURE);
 				}
+
+				if(abs(mp.num_steps > INT64_MAX))
+				{
+					printf("\nNumber of steps/ move value too large\n");
+					exit(EXIT_FAILURE);
+				}
 				
 				pulse_flag = 1;
+				break;
+			}
+
+			case 'o':
+			{
+				/* test to see if we can open the file. if not, tell the user and bail */
+				FILE *fp;
+				char filePath[PATH_MAX] = {0};
+
+				strlcpy(filePath, optarg, sizeof(filePath));
+
+				if((fp=fopen(filePath, "w")) == NULL)
+				{
+					perror("\nERROR: ");
+					exit(EXIT_FAILURE);
+				}
+				else
+				{
+					fclose(fp);
+					strlcpy(OUTPUT_FILE_PATH, filePath, sizeof(OUTPUT_FILE_PATH));
+				}
+
+				break;
+			}
+
+			case 'q':
+			{
+				NO_MOTOR = TRUE;
 				break;
 			}
 
@@ -236,9 +287,37 @@ void parse_args(int argc, char **argv)
 		}
 	}
 	
+	/* prior to jumping into an execution routine, finish set up for the WiringPi I/O */
+	pinMode(WIRINGPI_PULSE_OUTPUT, OUTPUT);
+	pinMode(WIRINGPI_DIRECTION_OUTPUT, OUTPUT);
+	pinMode(WIRINGPI_ESTOP_INPUT, INPUT);
+
+	pullUpDnControl(WIRINGPI_PULSE_OUTPUT, PUD_DOWN);
+	pullUpDnControl(WIRINGPI_DIRECTION_OUTPUT, PUD_DOWN);
+	pullUpDnControl(WIRINGPI_ESTOP_INPUT, PUD_DOWN);
+
+	/**
+	 * direction logic is set here - go ahead and turn on the output
+	 * for the AMCI SD7540, a HIGH output is CW
+	 **/
+ 
+ 	if(this_move->CW == 1)
+	{
+		digitalWrite(WIRINGPI_DIRECTION_OUTPUT, 1);
+	}
+ 
+ 	if(this_move->CCW == 1)
+ 	{
+		digitalWrite(WIRINGPI_DIRECTION_OUTPUT, 0};
+	}
+
+	/**
+	 * check which mode we are using - just a pulse train output, or an actual move profile. act accordingly
+	 **/
+
 	if(pulse_flag == 1)
 	{
-		if(pulse(&freq) != 0)
+		if(pulse(freq, mp.num_steps) != 0)
 		{
 			printf("\nERROR: Error in pulse train execution, exiting...\n");
 			exit(EXIT_FAILURE);
@@ -322,7 +401,11 @@ void show_usage()
 	printf("-h: display this message\n");
 	printf("-g: wiringpi pulse train output number (default 29)\n");
 	printf("-z: wiringpi step direction output number (default 26)\n");
+	printf("-x: wiringpi E-Stop input number (default 0)\n");
 	printf("-y: turns on verbose output\n");
+	printf("-o: outputs motion profile to <filename>\n");
+	printf("-q: does NOT actually run the motor, just simulates the run. Useful to use with -o if you want to graph the motion profile.\n");
+	printf("\n");
 	printf("-s: starting speed in steps/s (1-500)\n");
 	printf("-r: drive steps per revolution (default 2000)\n");
 	printf("-a: acceleration in steps/s^2 (1-1000)\n");
@@ -332,10 +415,10 @@ void show_usage()
 	printf("\n");
 	printf("\n");
 	printf("Special Functions:\n");
-	printf("-t: Create pulse train at specified frequency in Hz\n");
+	printf("-t: Create pulse train at specified frequency in Hz. Can be used with -n to specify number of steps to pulse\n");
 	printf("\n");
 	printf("\n");
-	printf("Example: ./rhubarb_motion -s 100 -a 250 -d 250 -v 10 -n 10000\n");
+	printf("Example: ./rhubarb_motion -s 100 -a 250 -d 250 -v 10 -n 10000 -o profile.csv\n");
 	printf("This would move the stepper - with a starting speed of 100 steps/s, an acceleration of 250 steps/s/s, a deceleration of 250 steps/s/s, a velocity of 10 RPS (600RPM) - move 10,000 steps CW\n");
 	printf("In this example, we assume the drive is set to 2000 steps/rev, so the stepper would move 5 revolutions (10,000/2,000). If the lead on your actuator is 1\" per revolution, your actuator would love 5\"\n");
 	exit(EXIT_SUCCESS);

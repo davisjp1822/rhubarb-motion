@@ -20,7 +20,7 @@ struct move_params
 	int16_t acc;
 	int16_t dec;
 	int32_t velocity;
-	int32_t num_steps;
+	int64_t num_steps;
 	int32_t steps_per_rev;
 };
 

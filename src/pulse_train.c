@@ -9,22 +9,42 @@
 #include "pulse_train.h"
 #include "motion_control.h"
 #include "globals.h"
+#include "debounce.h"
 
+#include <wiringPi.h>
 #include <time.h>
 #include <stdlib.h>
-#include <wiringPi.h>
+#include <inttypes.h>
 
 extern int8_t WIRINGPI_PULSE_OUTPUT;
+extern int8_t WIRINGPI_ESTOP_INPUT;
 
 /**
- * This will send out a pulse of a certain frequency until the user exits with ctrl-c
+ * This will send out a pulse of a certain frequency until the user exits with ctrl-c or stop_point is reached
 **/
 
-int pulse(const int32_t *freq)
+int8_t pulse(const int32_t freq, const int64_t stop_point)
 {
-	fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n\n", *freq, WIRINGPI_PULSE_OUTPUT);
+	fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n\n", freq, WIRINGPI_PULSE_OUTPUT);
 
+	/* in this case, just call with freq, the -1 values signal that we are just doing a simple pulse output */
+	pulse(freq, -1, -1, stop_point, NULL);
+}
+
+/** 
+ * the actual output pulsing brains
+ **/
+int8_t pulse(const int32_t freq, const int16_t a, const int32_t velocity, const int64_t stop_point, uint64_t *motor_pos)
+{
+	
+	/*
+	 * t is the time strcuture used to track the pulse times
+	 * estop_int is the integrator value used to debounce the e-stop switch
+	 */
 	struct timespec t;
+	int16_t estop_int = 0;
+
+	/* setup the GPIO pin - wiringPiSetup() was called in main.c */
 	pinMode(WIRINGPI_PULSE_OUTPUT, OUTPUT);
 
 	/* init at 1 so that we start with a pulse */
@@ -34,33 +54,75 @@ int pulse(const int32_t *freq)
 	 * Since we are not PWM, the duty cycle is 50%, which means, we have to reverse the f = 1/p equation and then divide by two to get the pulse on/off width
 	**/
 	long double pulse_width = 0;
-	pulse_width = ((1.0/((long double)*freq))/2.0)*NSEC_PER_SEC;
-	fprintf(stderr, "\nUsing Pulse Width of %Lfs\n", pulse_width/NSEC_PER_SEC);
-
-	/* setup the GPIO pin - wiringPiSetup() was called in main.c */
-	pinMode(WIRINGPI_PULSE_OUTPUT, OUTPUT);
-
-	/* get the time, load it into t, and increment t to 1s, which effectively delays execution for 1s. When clock_nanosleep is called, the TIMER_ABSTIME flag waits until the interval specified in t (the next arg). */
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	t.tv_sec++;
+	pulse_width = ((1.0/((long double)freq))/2.0)*NSEC_PER_SEC;
 	
-	while(1)
-	{	
-		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+	if(VERBOSE == TRUE)
+	{
+		fprintf(stderr, "\nUsing Pulse Width of %Lfs\n", pulse_width/NSEC_PER_SEC);
+	}
 
-		if(should_pulse == 1)
-		{
-			digitalWrite(WIRINGPI_PULSE_OUTPUT, HIGH);
-			should_pulse = 0;
-		}
-		else
-		{
-			digitalWrite(WIRINGPI_PULSE_OUTPUT, LOW);
-			should_pulse = 1;
-		}
+	/* get the time, load it into t, and increment t to 1s, which effectively delays execution for 1s. When clock_nanosleep is called, the TIMER_ABSTIME flag waits until the interval specified in t (the next arg). 
+	 * normally, if this were a failure, we would return as such, but since this is kind of important, we bail from the program
+	 **/
+	if(clock_gettime(CLOCK_MONOTONIC, &t) < 0)
+	{
+		perror("\n!!!ERROR: ");
+		exit(EXIT_FAILURE);
+	}
+	
+	/* adds a one second delay before starting the pulsing */
+	/*t.tv_sec++;*/
+	
+	/* this case is for the basic pulse output - just execute an infinite loop that pulses on and off */
+	if(a < 0 && velocity < 0 && motor_pos == NULL)
+	{
+		/* if doing a simple pulse train and stop_point is specified, track motor_pos and stop when that limit is reached */
+		int64_t pos = 0;
 		
-		t.tv_nsec += pulse_width;
-		tsnorm(&t);
+		while(1)
+		{	
+			/* check for e-stop condition */
+			if(debounce_input_read(WIRINGPI_ESTOP_INPUT, &estop_int, &t) == 1)
+			{
+				printf("\n!!!ERROR: E-Stop detected, exiting!\n");
+				exit(EXIT_FAILURE);
+			}
+
+			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
+
+			if(should_pulse == 1)
+			{	
+				if(NO_MOTOR == FALSE)
+				{
+					digitalWrite(WIRINGPI_PULSE_OUTPUT, HIGH);
+				}
+				should_pulse = 0;
+				pos++;
+			}
+			else
+			{
+				if(NO_MOTOR == FALSE)
+				{
+					digitalWrite(WIRINGPI_PULSE_OUTPUT, LOW);
+				}
+				should_pulse = 1;
+			}
+			
+			/* after pulsing is done, check to see if we have hit the stop limit */
+			if(stop_point > 0 && stop_point == pos)
+			{
+				fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)", pos);
+				return 0;
+			}
+
+			t.tv_nsec += pulse_width;
+			tsnorm(&t);
+		}
+	}
+	/* okay, this is an actual profile. do some math and make it happen! */
+	else
+	{
+		
 	}
 
 	return 0;

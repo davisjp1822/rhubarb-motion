@@ -8,15 +8,23 @@
 
 #include <stdint.h>
 #include <assert.h>
-#include <time.h>
 #include <math.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <bsd/string.h>
 #include <stdio.h>
+#include <wiringPi.h>
 
 #include "motion_control.h"
 #include "globals.h"
+#include "pulse_train.h"
+
+extern int8_t WIRINGPI_DIRECTION_OUTPUT;
+
+static uint64_t motor_pos = 0;
+static uint64_t acc_stop_point = 0;
+static uint64_t dec_start_point = 0;
+static struct move_params *this_move;
 
 /* STATE MACHINE SETUP - STEP 1
  * The next several blocks will setup the state machine.
@@ -24,16 +32,6 @@
  * First, we define our states. The states are the actual functions that will be called by the control loop.
  * They take no arguments and return a return code based on whether they fail, pass, or repeat.
  *
- */
-
-static uint64_t motor_pos = 0;
-static uint64_t acc_stop_point = 0;
-static uint64_t dec_start_point = 0;
-static int8_t should_pulse = FALSE;
-static struct timespec main_timer;
-static struct move_params *this_move;
-
-/*
  * The state functions defined below define the actual actions in the state (move logic, etc).
  * The do NOT define transition logic - they just return values as defined by state_ret_codes.
  *
@@ -107,6 +105,7 @@ static struct transition state_transitions[] =
 	{decel, stop, stop}
 };
 
+/* Transition lookup routine */
 static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_codes rc);
 
 int execute_move(struct move_params *mp)
@@ -250,20 +249,10 @@ static int state_start(void)
 	/*
 	 * the starting logic is simple. init the following variables
 	 * motor_pos - tracks motor position in steps (always starts at 0)
-	 * main_timer - the main timer that controls the output pulsing
-	 * should_pulse = TRUE or FALSE - should the output be pulsing?
 	 */
 
 	motor_pos = 0;
-	should_pulse = TRUE;
 	
-	/* if we can't init the clock, bail from the program as something is REALLY not right */
-	if(clock_gettime(CLOCK_MONOTONIC, &main_timer) < 0)
-	{
-		perror("!!! ERROR:");
-		rc = fail;
-	}
-
 	/* MOTION CALCULATIONS
 	 * Currently, the math here will generate a trapezoidal move profile.
 	 * If you wanted to create a different motion profile - sinusoidal for instance - you would have to tweak the math.
@@ -288,15 +277,37 @@ static int state_start(void)
 	 * but, we do have to worry about rollover. calc first, then check second.
 	 * 
 	 */
-	acc_stop_point = pow((this_move->velocity - this_move->starting_speed), 2)/(2 * this_move->acc);
-	dec_start_point = this_move->num_steps - acc_stop_point - (pow(this_move->velocity, 2)/(2 * this_move->dec));
+	acc_stop_point = pow(((this_move->velocity * this_move->steps_per_rev) - this_move->starting_speed), 2)/(2 * this_move->acc);
+	dec_start_point = this_move->num_steps - acc_stop_point - (pow((this_move->velocity * this_move->steps_per_rev), 2)/(2 * this_move->dec));
 
 	return rc;
 }
 
 static int state_accel(void)
 {
+
+	/* HOW TO ACCELERATE
+	 * While accelerating, we work in a small infinite loop. Through each pass, we do the motion calculation, checking if certain exit conditions
+	 * have been met - such as an e-stop, or:
+	 * 1. motor speed = velocity (reached acc_stop_point)
+	 * 2. motor_pos >= num_steps*0.5 (halfway through the move and still accelerating, time to start decelerating)
+	 * 3. motor_pos >= dec_start_point
+	 *
+	 * If NO_MOTOR is set, we don't actually pulse. Generally, this is used in conjunction with -o to output the motion profile to a file.
+	 *
+	 */
+
 	enum state_ret_codes rc;
+	
+	 /* 
+	  * Calling this function fires a loop in pulse_train.c.
+	  * The loop returns when the acceleration profile is finished.
+	  * If successful, the return will be 0
+	  * If not, the return will be < 0
+	  *
+	  */
+	 //if(pulse(const int32_t, freq, int16_t a, int32_t velocity, int64_t stop_point, uint64_t *motor_pos)
+
 
 	return rc;
 }
