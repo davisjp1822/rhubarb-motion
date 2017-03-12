@@ -16,9 +16,9 @@
  * SAMPLING_FREQ is the input sampling time in Hz
  * */
 
-static const int8_t DEBOUNCE_TIME = 0.3;
-static const int8_t SAMPLING_RATE = 10;
-#define MAXIMUM (SAMPLING_RATE / DEBOUNCE_TIME)
+static const float DEBOUNCE_TIME = 0.3;
+static const int8_t SAMPLING_RATE = 10.0;
+static int8_t MAXIMUM = 0;
 
 int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, const struct timespec t)
 {
@@ -26,6 +26,9 @@ int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, co
 	 * This function is typically going to be called from some type of control loop. Therefore, it is up to use to use t to 
 	 * ensure that we are sampling at the correct sampling rate, which is defined by SAMPLING_RATE (Hz).
 	 **/
+	
+	MAXIMUM = SAMPLING_RATE/DEBOUNCE_TIME;
+
 	if((t.tv_nsec/NSEC_PER_MSEC) % SAMPLING_RATE == 0)
 	{
 		/* Step 1: Update the integrator based on the input signal.  Note that the 
@@ -54,7 +57,7 @@ int16_t debounce_input_read(const int8_t wiringpi_input, int16_t *integrator, co
 		}
 		else if(*integrator >= MAXIMUM)
 		{
-			*integrator = MAXIMUM;  /* defensive code if integrator got corrupted */
+			*integrator = (int16_t)MAXIMUM;  /* defensive code if integrator got corrupted */
 			return 1;
 		}
 	}

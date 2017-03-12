@@ -95,11 +95,12 @@ int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, c
 		
 		while(1)
 		{	
-			/* check for e-stop condition */
+
+			/* check for e-stop condition */ 
 			if(debounce_input_read(WIRINGPI_ESTOP_INPUT, &estop_int, t) == 1)
 			{
-				printf("\n!!!ERROR: E-Stop detected, exiting!\n");
-				exit(EXIT_FAILURE);
+				fprintf(stdout, "\n!!!ERROR: E-Stop detected!\n");
+				return -1;
 			}
 
 			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
