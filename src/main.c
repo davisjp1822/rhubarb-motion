@@ -317,7 +317,10 @@ void parse_args(int argc, char **argv)
 
 	if(pulse_flag == 1)
 	{
-		if(pulse_train(freq, mp.num_steps) != 0)
+		/* variable that holds the motor position */
+		uint64_t motor_pos = 0;
+
+		if(pulse_train(freq, mp.num_steps, &motor_pos) != 0)
 		{
 			printf("\nERROR: Error in pulse train execution, exiting...\n");
 			exit(EXIT_FAILURE);

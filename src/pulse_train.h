@@ -16,7 +16,7 @@
  * just a straight pulse train at frequency freq. Just keeps going until the user does a ctrl-c or stop_point is reached
  * if an infinite move is desired, just set stop_point < 0.
  **/
-int8_t pulse_train(const int32_t freq, const int64_t stop_point);
+int8_t pulse_train(const int32_t freq, const int64_t stop_point, uint64_t *motor_pos);
 
 /* this variation of the pulse function pulses at a set freq, accelerating or decelerating with a (steps/s), until velocity (steps/s) OR stop_point (steps) is reached 
  * motor_pos is a pointer to a value that is constantly updated to the caller as the function is running 

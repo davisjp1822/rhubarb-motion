@@ -26,23 +26,25 @@ extern int8_t WIRINGPI_ESTOP_INPUT;
  * This will send out a pulse of a certain frequency until the user exits with ctrl-c or stop_point is reached
 **/
 
-int8_t pulse_train(const int32_t freq, const int64_t stop_point)
+int8_t pulse_train(const int32_t freq, const int64_t stop_point, uint64_t *motor_pos)
 {
-	/* stop_point should always be positive, since direction is set by an output */
-	int64_t abs_sp = abs(stop_point);
-
-	/* still check against stop_point, since it would only be set negative by main.c if it is unused */
+	/* main.c sets stop_point to -1 if the -t option is used but steps are not constrained by -n*/
 	if(stop_point > 0)
 	{
+		/**
+	 	 * stop_point should always be positive, since direction is set by an output 
+		 * this check and output set is done by the caller
+		 **/
+
+		int64_t abs_sp = abs(stop_point);
+
 		fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d for %" PRId64 " steps...\nPress Ctrl-C to exit...\n", freq, WIRINGPI_PULSE_OUTPUT, abs_sp);
-	}
-	else
-	{
-		fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n", freq, WIRINGPI_PULSE_OUTPUT);
+		return pulse_trap(freq, -1, -1, abs_sp, motor_pos);
 	}
 
-	/* in this case, just call with freq, the -1 values signal that we are just doing a simple pulse output */
-	return pulse_trap(freq, -1, -1, abs_sp, NULL);
+	/* if stop point is less than 0, then we are outputting an infinite pulse train */
+	fprintf(stderr, "\nPulsing at %dHz on WiringPi output %d...\nPress Ctrl-C to exit...\n", freq, WIRINGPI_PULSE_OUTPUT);
+	return pulse_trap(freq, -1, -1, abs_sp, motor_pos);
 }
 
 /** 
@@ -51,15 +53,12 @@ int8_t pulse_train(const int32_t freq, const int64_t stop_point)
 int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, const int64_t stop_point, uint64_t *motor_pos)
 {
 	
-	/*
+	/**
 	 * t is the time strcuture used to track the pulse times
 	 * estop_int is the integrator value used to debounce the e-stop switch
-	 */
+	 **/
 	struct timespec t;
 	int16_t estop_int = 0;
-
-	/* setup the GPIO pin - wiringPiSetup() was called in main.c */
-	pinMode(WIRINGPI_PULSE_OUTPUT, OUTPUT);
 
 	/* init at 1 so that we start with a pulse */
 	int8_t should_pulse = 1;
@@ -75,8 +74,9 @@ int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, c
 		fprintf(stderr, "\nUsing Pulse Width of %Lfs\n", pulse_width/NSEC_PER_SEC);
 	}
 
-	/* get the time, load it into t, and increment t to 1s, which effectively delays execution for 1s. When clock_nanosleep is called, the TIMER_ABSTIME flag waits until the interval specified in t (the next arg). 
-	 * normally, if this were a failure, we would return as such, but since this is kind of important, we bail from the program
+	/**
+	 * Get the time, and load it into t. When clock_nanosleep is called, the TIMER_ABSTIME flag waits until the interval specified in t (the next arg). 
+	 * normally, if this were a failure, we would return as such, but since this is kind of important, we bail from the program.
 	 **/
 	if(clock_gettime(CLOCK_MONOTONIC, &t) < 0)
 	{
@@ -88,14 +88,13 @@ int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, c
 	/*t.tv_sec++;*/
 	
 	/* this case is for the basic pulse output - just execute an infinite loop that pulses on and off */
-	if(a < 0 && velocity < 0 && motor_pos == NULL)
+	if(a < 0 && velocity < 0)
 	{
 		/* if doing a simple pulse train and stop_point is specified, track motor_pos and stop when that limit is reached */
 		int64_t pos = 0;
 		
 		while(1)
 		{	
-
 			/* check for e-stop condition */ 
 			if(debounce_input_read(WIRINGPI_ESTOP_INPUT, &estop_int, t) == 1)
 			{
@@ -124,9 +123,9 @@ int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, c
 			}
 			
 			/* after pulsing is done, check to see if we have hit the stop limit */
-			if(stop_point > 0 && stop_point == pos)
+			if(stop_point > 0 && stop_point == *motor_pos)
 			{
-				fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)\n", pos);
+				fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)\n", *motor_pos);
 				return 0;
 			}
 
