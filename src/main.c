@@ -320,6 +320,12 @@ void parse_args(int argc, char **argv)
 		/* variable that holds the motor position */
 		uint64_t motor_pos = 0;
 
+		/* infinite move - send as 0 to pulse_train */
+		if(mp.num_steps == -1)
+		{
+			mp.num_steps = 0;
+		}
+
 		if(pulse_train(freq, mp.num_steps, &motor_pos) != 0)
 		{
 			printf("\nERROR: Error in pulse train execution, exiting...\n");
@@ -327,6 +333,7 @@ void parse_args(int argc, char **argv)
 		}
 		else
 		{
+			fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)\n", *motor_pos);
 			exit(EXIT_SUCCESS);
 		}
 	}

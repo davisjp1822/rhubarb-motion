@@ -12,18 +12,24 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "motion_control.h"
+
 /**
- * just a straight pulse train at frequency freq. Just keeps going until the user does a ctrl-c or stop_point is reached
- * if an infinite move is desired, just set stop_point < 0.
- **/
+ * PULSE TRAIN OPERATION
+ * This will send out a pulse of a certain frequency until the user exits with ctrl-c or stop_point is reached.
+ * freq: pulse frequency in Hz.
+ * stop_point: stopping point in steps. If zero, program assumes infinite move.
+ * *motor_pos: current motor position (updated to the caller)
+**/
 int8_t pulse_train(const int32_t freq, const int64_t stop_point, uint64_t *motor_pos);
 
-/* this variation of the pulse function pulses at a set freq, accelerating or decelerating with a (steps/s), until velocity (steps/s) OR stop_point (steps) is reached 
- * motor_pos is a pointer to a value that is constantly updated to the caller as the function is running 
- * 
- * IMPORTANT NOTE: in this case, freq is actually the speed at which the move should start!
- *
- */
-int8_t pulse_trap(const int32_t freq, const int16_t a, const int32_t velocity, const int64_t stop_point, uint64_t *motor_pos);
+/** 
+ * ACC/DEC OPERATION
+ * Calculates an acceleration or deceleration ramp for a Trapezoidal move and executes it.
+ * move_params: the move parameters as specified by the user.
+ * stop_point: stopping point in steps. effectively either the acceleration stop point or mp->num_steps (deceleration)
+ * motor_pos: current motor position (updated to the caller)
+ **/
+int8_t trap_acc_dec(const struct *move_params mp, const int64_t stop_point, uint64_t *motor_pos, double (*time)[num_steps], uint64_t (*pos)[num_steps]);
 
 #endif /*PULSE_TRAIN_H*/

@@ -23,8 +23,6 @@ extern _Bool VERBOSE;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 
 static uint64_t motor_pos = 0;
-static uint64_t acc_stop_point = 0;
-static uint64_t dec_start_point = 0;
 static struct move_params *this_move;
 
 /* STATE MACHINE SETUP - STEP 1
@@ -88,22 +86,22 @@ static struct transition state_transitions[] =
 	{start, done, accel},
 	{start, fail, exit_fail},
 	{start, repeat, start},
-	{start, stop, stop},
+	{start, stop, estop},
 
 	{accel, done, run},
 	{accel, fail, exit_fail},
 	{accel, repeat, accel},
-	{accel, stop, stop},
+	{accel, stop, estop},
 
 	{run, done, decel},
 	{run, fail, exit_fail},
 	{run, repeat, run},
-	{run, stop, stop},
+	{run, stop, estop},
 
 	{decel, done, exit_success},
 	{decel, fail, exit_fail},
 	{decel, repeat, decel},
-	{decel, stop, stop}
+	{decel, stop, estop}
 };
 
 /* Transition lookup routine */
@@ -244,7 +242,7 @@ static enum state_codes lookup_transitions(enum state_codes cs, enum state_ret_c
 
 static int state_start(void)
 {
-	/* default state is success - unless one of our conditionals fails... */
+	/* default state is success since this is mostly a setup routine*/
 	enum state_ret_codes rc = done;
 	
 	/*
@@ -254,61 +252,45 @@ static int state_start(void)
 
 	motor_pos = 0;
 	
-	/* MOTION CALCULATIONS
-	 * Currently, the math here will generate a trapezoidal move profile.
-	 * If you wanted to create a different motion profile - sinusoidal for instance - you would have to tweak the math.
-	 * What is being calculated here is the accel stop point and the decel start point. In theory, these wouldn't change for a sin move.
-	 * Most of the change would be done in the acc and dec profiles ... I think.
-	 *
-	 * Anyway, deriving the distance required for acceleration is easy:
-	 * 	D = (velocity-starting_speed)^2/(2 * acc)
-	 *
-	 * Similarly, deriving the decel start point is easy as well:
-	 *	D = num_steps - (velocity)^2/(2 * dec)
-	 *
-	 * There be some dragons here though. What happens if we never reach the target velocity b/c the move profile is too short? For decel, the velocity would have to be calculated at
-	 * the time of deceleration. Basically, this would be a triangle move instead of a trap move.
-	 *
-	 * Anyway, that is handled in state_accel. We don't have to worry about that here!
-	 *
-	 */
-	
-	/* 
-	 * since these are unsigned integers, we don't have to worry about undefined behavior.
-	 * but, we do have to worry about rollover. calc first, then check second.
-	 * 
-	 */
-	acc_stop_point = pow(((this_move->velocity * this_move->steps_per_rev) - this_move->starting_speed), 2)/(2 * this_move->acc);
-	dec_start_point = this_move->num_steps - acc_stop_point - (pow((this_move->velocity * this_move->steps_per_rev), 2)/(2 * this_move->dec));
-
 	return rc;
 }
 
 static int state_accel(void)
 {
-
-	/* HOW TO ACCELERATE
-	 * While accelerating, we work in a small infinite loop. Through each pass, we do the motion calculation, checking if certain exit conditions
-	 * have been met - such as an e-stop, or:
-	 * 1. motor speed = velocity (reached acc_stop_point)
-	 * 2. motor_pos >= num_steps*0.5 (halfway through the move and still accelerating, time to start decelerating)
-	 * 3. motor_pos >= dec_start_point
-	 *
-	 * If NO_MOTOR is set, we don't actually pulse. Generally, this is used in conjunction with -o to output the motion profile to a file.
-	 *
-	 */
-
 	enum state_ret_codes rc;
 	
-	 /* 
+	 /** 
 	  * Calling this function fires a loop in pulse_train.c.
 	  * The loop returns when the acceleration profile is finished.
 	  * If successful, the return will be 0
 	  * If not, the return will be < 0
+	  * E-Stop will return -2, all other errors -1
 	  *
-	  */
-	 //if(pulse(const int32_t, freq, int16_t a, int32_t velocity, int64_t stop_point, uint64_t *motor_pos)
+	  * If you wanted to extend the program to do other move types, you would add the math in this function!
+	  *
+	  * The third parameter, stop_point, is ignored for this move profile!
+	  **/
+	
+	double times[this_move->num_steps] = {0};
+	uint64_t positions[this_move->num_steps] = {0};
+	uint64_t acc_stop_point = pow(((this_move->velocity * this_move->steps_per_rev) - this_move->starting_speed), 2)/(2 * this_move->acc);
 
+	int8_t ret = trap_acc_dec(&this_move, acc_stop_point, &motor_pos, double *times, uint64_t *positions)
+	
+	if(ret == 0)
+	{
+		rc=done;
+	}
+	
+	if(ret == -1)
+	{
+		rc=fail;
+	}
+
+	if(ret == -2)
+	{
+		rc=stop;
+	}
 
 	return rc;
 }
@@ -317,6 +299,26 @@ static int state_run(void)
 {
 	enum state_ret_codes rc;
 
+	double times[this_move->num_steps] = {0};
+	uint64_t positions[this_move->num_steps] = {0};
+
+	int8_t ret = pulse_train(this_move->velocity, 0, &motor_pos);
+	
+	if(ret == 0)
+	{
+		rc=done;
+	}
+	
+	if(ret == -1)
+	{
+		rc=fail;
+	}
+
+	if(ret == -2)
+	{
+		rc=stop;
+	}
+
 	return rc;
 }
 
@@ -324,6 +326,7 @@ static int state_decel(void)
 {
 	enum state_ret_codes rc;
 
+	rc = fail;
 	return rc;
 }
 
