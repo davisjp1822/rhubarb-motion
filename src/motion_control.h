@@ -17,8 +17,8 @@ struct move_params
 	int8_t CW;
 	int8_t CCW;
 	int16_t starting_speed;
-	int16_t acc;
-	int16_t dec;
+	int32_t acc;
+	int32_t dec;
 	int32_t velocity;
 	int64_t num_steps;
 	int32_t steps_per_rev;

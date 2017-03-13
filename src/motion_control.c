@@ -271,11 +271,15 @@ static int state_accel(void)
 	  * The third parameter, stop_point, is ignored for this move profile!
 	  **/
 	
-	double times[this_move->num_steps] = {0};
-	uint64_t positions[this_move->num_steps] = {0};
+	double times[this_move->num_steps];
+	memset(times, 0, this_move->num_steps*sizeof(double));
+
+	uint64_t positions[this_move->num_steps];
+	memset(positions, 0, this_move->num_steps*sizeof(uint64_t));
+
 	uint64_t acc_stop_point = pow(((this_move->velocity * this_move->steps_per_rev) - this_move->starting_speed), 2)/(2 * this_move->acc);
 
-	int8_t ret = trap_acc_dec(&this_move, acc_stop_point, &motor_pos, double *times, uint64_t *positions)
+	int8_t ret = trap_acc_dec(*this_move, acc_stop_point, &motor_pos, times, positions);
 	
 	if(ret == 0)
 	{
@@ -299,11 +303,8 @@ static int state_run(void)
 {
 	enum state_ret_codes rc;
 
-	double times[this_move->num_steps] = {0};
-	uint64_t positions[this_move->num_steps] = {0};
+	int8_t ret = pulse_train((this_move->velocity * this_move->steps_per_rev), NULL, &motor_pos);
 
-	int8_t ret = pulse_train(this_move->velocity, 0, &motor_pos);
-	
 	if(ret == 0)
 	{
 		rc=done;

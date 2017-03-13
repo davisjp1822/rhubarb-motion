@@ -17,11 +17,12 @@
 /**
  * PULSE TRAIN OPERATION
  * This will send out a pulse of a certain frequency until the user exits with ctrl-c or stop_point is reached.
- * freq: pulse frequency in Hz.
- * stop_point: stopping point in steps. If zero, program assumes infinite move.
+ * freq: pulse frequency in Hz. If a_rate is specified, this is the starting_speed for the acceleration ramp!!
+ * *a_rate: acceleration rate in steps/s/s. NULL if using constant velocity profile
+ * *stop_point: stopping point in steps. If NULL, program assumes infinite move.
  * *motor_pos: current motor position (updated to the caller)
 **/
-int8_t pulse_train(const int32_t freq, const int64_t stop_point, uint64_t *motor_pos);
+int8_t pulse_train(const int32_t freq, const int64_t *stop_point, uint64_t *motor_pos);
 
 /** 
  * ACC/DEC OPERATION
@@ -30,6 +31,6 @@ int8_t pulse_train(const int32_t freq, const int64_t stop_point, uint64_t *motor
  * stop_point: stopping point in steps. effectively either the acceleration stop point or mp->num_steps (deceleration)
  * motor_pos: current motor position (updated to the caller)
  **/
-int8_t trap_acc_dec(const struct *move_params mp, const int64_t stop_point, uint64_t *motor_pos, double (*time)[num_steps], uint64_t (*pos)[num_steps]);
+int8_t trap_acc_dec(const struct move_params mp, const int64_t stop_point, uint64_t *motor_pos, double *times, uint64_t *positions);
 
 #endif /*PULSE_TRAIN_H*/

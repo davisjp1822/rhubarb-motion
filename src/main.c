@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <sys/utsname.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sched.h>
@@ -103,7 +104,7 @@ void parse_args(int argc, char **argv)
 		show_usage();
 	}
 
-	while ((opt = getopt(argc, argv, "yhsq:r:g:a:d:v:n:z:t:x:o:")) != -1)
+	while ((opt = getopt(argc, argv, "yhs:q:r:g:a:d:v:n:z:t:x:o:")) != -1)
 	{
 		switch (opt) {
 			
@@ -159,7 +160,7 @@ void parse_args(int argc, char **argv)
 			case 'a':
 				mp.acc = atoi(optarg);
 
-				if(mp.acc <= 0 || mp.acc > 1000)
+				if(mp.acc <= 0 || mp.acc > 125000)
 				{
 					printf("\nERROR: Acceleration cannot be less than or equal to 0 or greater than 1000\n");
 					exit(EXIT_FAILURE);
@@ -169,7 +170,7 @@ void parse_args(int argc, char **argv)
 			case 'd':
 				mp.dec = atoi(optarg);
 
-				if(mp.dec <= 0 || mp.dec > 1000)
+				if(mp.dec <= 0 || mp.dec > 125000)
 				{
 					printf("\nERROR: Deceleration cannot be less than or equal to 0 or greater than 1000\n");
 					exit(EXIT_FAILURE);
@@ -195,11 +196,6 @@ void parse_args(int argc, char **argv)
 					fprintf(stderr, "\nERROR: Pulse frequency cannot be greater than %dHz. This limit is derived by the following formula:\n\n1/(1/(velocity * steps_per_rev)).\n", MAX_FREQ);
 					printf("Where velocity is set with option -v (revolutions per second) and steps_per_rev is set via -r (steps per revolution). The latter is usually set in the stepper drive itself.\n\n");
 					exit(EXIT_SUCCESS);
-				}
-
-				else
-				{
-					fprintf(stderr, "\nOutput freq is: %d\n", freq);
 				}
 				break;
 			}
@@ -319,21 +315,22 @@ void parse_args(int argc, char **argv)
 	{
 		/* variable that holds the motor position */
 		uint64_t motor_pos = 0;
+		int64_t *num_steps = NULL;
 
 		/* infinite move - send as 0 to pulse_train */
-		if(mp.num_steps == -1)
+		if(mp.num_steps > 0)
 		{
-			mp.num_steps = 0;
+			num_steps = &mp.num_steps;
 		}
 
-		if(pulse_train(freq, mp.num_steps, &motor_pos) != 0)
+		if(pulse_train(freq, num_steps, &motor_pos) != 0)
 		{
 			printf("\nERROR: Error in pulse train execution, exiting...\n");
 			exit(EXIT_FAILURE);
 		}
 		else
 		{
-			fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)\n", *motor_pos);
+			fprintf(stderr, "\nMove Complete (moved %" PRId64 " steps)\n", motor_pos);
 			exit(EXIT_SUCCESS);
 		}
 	}
