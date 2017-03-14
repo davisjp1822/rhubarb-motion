@@ -23,6 +23,8 @@ extern _Bool VERBOSE;
 extern int8_t WIRINGPI_DIRECTION_OUTPUT;
 
 static uint64_t motor_pos = 0;
+static int64_t acc_stop_point = 0;
+static int64_t dec_start_point = 0;
 static struct move_params *this_move;
 
 /* STATE MACHINE SETUP - STEP 1
@@ -119,6 +121,40 @@ int execute_move(struct move_params *mp)
 	 */
 	
 	this_move = mp;
+	acc_stop_point = pow(this_move->velocity, 2)/(2 * this_move->acc);
+	dec_start_point = this_move->num_steps - (pow(this_move->velocity, 2)/(2 * this_move->dec));
+
+	if(VERBOSE == true)
+	{
+		printf("\nMOVE STATISTICS - Trapezoidal Move:\n");
+		printf("Total number of steps:\t\t\t%" PRId64 "\n", this_move->num_steps);
+		printf("Acceleration stop point (steps):\t%" PRId64 "\n", acc_stop_point);
+		printf("Deceleration start point (steps):\t%" PRId64 "\n", dec_start_point);
+	}
+
+	/**
+	 * SPECIAL CASE - Acceleration stop point is past halfway point of move
+	 * Create a triangle move in this case, with an equal acc and dec
+	 * 
+	 * To make this move work, we have to figure out our original time to complete the move
+	 * (Vo/a = To), and then use the original time divided by two (To/2) (since this is a triangle move)
+	 * to calculate our new velocity:
+	 * Vnew = a * (To/2)
+	 **/
+	if(acc_stop_point >= this_move->num_steps * 0.5)
+	{
+		acc_stop_point = this_move->num_steps * 0.5;
+		dec_start_point = (this_move->num_steps * 0.5);
+
+		double new_v = sqrt(2*this_move->acc * (this_move->num_steps/2));
+		mp->velocity = new_v;
+
+		printf("\nHalf Way Rule!\n");
+		printf("acc stop: %" PRId64 "\n", acc_stop_point);
+		printf("dec start: %" PRId64 "\n", dec_start_point);
+		printf("new velocity: %F\n", mp->velocity);
+	}
+
 	enum state_codes current_state = start;
 	enum state_ret_codes rc;
 	int (*m_state)(void);
@@ -277,8 +313,6 @@ static int state_accel(void)
 	uint64_t positions[this_move->num_steps];
 	memset(positions, 0, this_move->num_steps*sizeof(uint64_t));
 
-	uint64_t acc_stop_point = pow(((this_move->velocity * this_move->steps_per_rev) - this_move->starting_speed), 2)/(2 * this_move->acc);
-
 	int8_t ret = trap_acc_dec(*this_move, acc_stop_point, &motor_pos, times, positions);
 	
 	if(ret == 0)
@@ -303,7 +337,8 @@ static int state_run(void)
 {
 	enum state_ret_codes rc;
 
-	int8_t ret = pulse_train((this_move->velocity * this_move->steps_per_rev), NULL, &motor_pos);
+	int64_t run_dist = dec_start_point - acc_stop_point;
+	int8_t ret = pulse_train(this_move->velocity, &run_dist, &motor_pos);
 
 	if(ret == 0)
 	{
@@ -327,7 +362,41 @@ static int state_decel(void)
 {
 	enum state_ret_codes rc;
 
-	rc = fail;
+	/** 
+	  * Calling this function fires a loop in pulse_train.c.
+	  * The loop returns when the acceleration profile is finished.
+	  * If successful, the return will be 0
+	  * If not, the return will be < 0
+	  * E-Stop will return -2, all other errors -1
+	  *
+	  * If you wanted to extend the program to do other move types, you would add the math in this function!
+	  *
+	  * The third parameter, stop_point, is ignored for this move profile!
+	  **/
+	
+	double times[this_move->num_steps];
+	memset(times, 0, this_move->num_steps*sizeof(double));
+
+	uint64_t positions[this_move->num_steps];
+	memset(positions, 0, this_move->num_steps*sizeof(uint64_t));
+
+	int8_t ret = trap_acc_dec(*this_move, this_move->num_steps, &motor_pos, times, positions);
+	
+	if(ret == 0)
+	{
+		rc=done;
+	}
+	
+	if(ret == -1)
+	{
+		rc=fail;
+	}
+
+	if(ret == -2)
+	{
+		rc=stop;
+	}
+	
 	return rc;
 }
 

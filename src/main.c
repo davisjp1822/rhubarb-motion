@@ -189,7 +189,7 @@ void parse_args(int argc, char **argv)
 				}
 
 				/* calculate velocity, turn it into a frequency, and test to see if it is above MAX_FREQ in kHz */
-				freq = 1/((double)1/(mp.velocity*mp.steps_per_rev));
+				freq = 1/((double)1/(mp.velocity));
 
 				if(freq > MAX_FREQ)
 				{
@@ -417,7 +417,7 @@ void show_usage()
 	printf("-r: drive steps per revolution (default 2000)\n");
 	printf("-a: acceleration in steps/s^2 (1-1000)\n");
 	printf("-d: deceleration in steps/s^2 (1-1000)\n");
-	printf("-v: velocity in revolutions per second (rps) (not to exceed 20kHz pulse frequency)\n");
+	printf("-v: velocity in steps/s (not to exceed 20kHz pulse frequency)\n");
 	printf("-n: move distance in steps (negative values for CCW rotation, positive values for CW rotation)\n");
 	printf("\n");
 	printf("\n");
